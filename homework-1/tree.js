@@ -19,7 +19,6 @@ const maxDeep = deep + startDeep;
 const startDirName = startPath.split(sep)[startDeep - 1];
 
 const printRow = (position, currentLevel, itemsCount, fileName, currentIndent) => {
-
   if (currentLevel === 0) {
     if (position === itemsCount - 1) {
       console.log('└──', fileName);
@@ -38,13 +37,11 @@ const printRow = (position, currentLevel, itemsCount, fileName, currentIndent) =
 
 
 const getAllFiles = function(dirPath, arrayOfFiles) {
-
-  const currentDeep = dirPath.split(sep).length
+  const currentDeep = dirPath.split(sep).length;
   const level = currentDeep - startDeep;
-
   const files = readdirSync(dirPath);
 
-  arrayOfFiles = arrayOfFiles || []
+  arrayOfFiles = arrayOfFiles || [];
 
   files.forEach((file, idx) => {
     let indent = '';
@@ -66,21 +63,19 @@ const getAllFiles = function(dirPath, arrayOfFiles) {
     } else {
       fileCount ++;
       printRow(idx, level, files.length, file, indent);
-      arrayOfFiles.push(join(dirPath, "/", file))
+      arrayOfFiles.push(join(dirPath, "/", file));
     }
   })
 
-  return arrayOfFiles
+  return arrayOfFiles;
 }
 
 
-console.log(startDirName)
-getAllFiles(startPath)
+console.log(startDirName);
+getAllFiles(startPath);
 console.log(`${dirCount} directories, ${fileCount} files`);
 
 if (errors.length) {
   console.log('Errors:');
   errors.forEach(e => console.log(e.message));
 }
-
-
