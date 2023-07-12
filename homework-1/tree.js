@@ -1,29 +1,25 @@
-import { statSync, readdirSync } from 'node:fs';
-import { join, parse, sep, isAbsolute } from 'node:path'
-import { argv } from 'node:process';
-
-const startPath = argv[2];
-
-if (!isAbsolute(startPath)) {
-  console.log('Bad path!');
-  process.exit(1);
-}
-
-const deep = (argv[3] === '-d' || argv[3] === '--deep') && Number.isInteger(+argv[4]) ? +argv[4] : 1;
+const fs = require('node:fs');
+const path = require('node:path');
+const chalk = require('chalk');
 
 const errors = [];
 let dirCount = 0;
 let fileCount = 0;
-const startDeep = startPath.split(sep).length;
-const maxDeep = deep + startDeep;
-const startDirName = startPath.split(sep)[startDeep - 1];
+let inputDeep, startDeep, maxDeep;
+
+const setInputDeep = (key, value) => {
+  if (key === undefined || value === undefined) {
+    return 0;
+  }
+  return (key === '-d' || key === '--deep') && Number.isInteger(+value) ? +value : 0
+};
 
 const printRow = (position, currentLevel, itemsCount, fileName, currentIndent) => {
   if (currentLevel === 0) {
     if (position === itemsCount - 1) {
-      console.log('└──', fileName);
+      console.log('└── ' + fileName);
     } else {
-      console.log('├──', fileName);
+      console.log('├── ' + fileName);
     }
 
   } else if (currentLevel < itemsCount - 1) {
@@ -35,47 +31,112 @@ const printRow = (position, currentLevel, itemsCount, fileName, currentIndent) =
   }
 }
 
+const calcCurrentDeepByPath = (absolutePath) => {
+  return absolutePath.split(path.sep).filter((el) => el).length;
+};
 
-const getAllFiles = function(dirPath, arrayOfFiles) {
-  const currentDeep = dirPath.split(sep).length;
-  const level = currentDeep - startDeep;
-  const files = readdirSync(dirPath);
+const getIndent = (level) => {
+  let indent = '';
+  for (let i = 0; i < level; i++) {
+    indent += ' ';
+  }
+  return indent;
+};
 
-  arrayOfFiles = arrayOfFiles || [];
+const getFilesInDirectory = async (dirPath) => {
+  try {
+    return await fs.promises.readdir(dirPath);
+  } catch(e) {
+    errors.push(e);
+    return [];
+  }
+}
 
-  files.forEach((file, idx) => {
-    let indent = '';
-    for (let i = 0; i < level; i++) {
-      indent += ' ';
-    }
+const calcLevel = (currentDeep, startDeep) => {
+  const res = currentDeep - startDeep;
+  return res < 0 ? 0 : res;
+};
 
-    if (statSync(dirPath + "/" + file).isDirectory() && currentDeep < maxDeep) {
-      dirCount++;
-      printRow(idx, level, files.length, file, indent);
+const getFileInfo = async (dirPath, fileName) => {
+  try {
+    return await fs.promises.stat(path.resolve(dirPath, fileName));
+  } catch (e) {
+    return undefined;
+  }
+}
 
-      try {
-        arrayOfFiles = getAllFiles(dirPath + "/" + file, arrayOfFiles);
-      } catch (e) {
-        errors.push(e);
-      }
-
-
-    } else {
-      fileCount ++;
-      printRow(idx, level, files.length, file, indent);
-      arrayOfFiles.push(join(dirPath, "/", file));
-    }
-  })
-
-  return arrayOfFiles;
+const printErrors = (errorList) => {
+  if (Array.isArray(errorList) && errorList.length) {
+    console.log('Errors:');
+    errorList.forEach(e => console.log(e.message));
+  }
 }
 
 
-console.log(startDirName);
-getAllFiles(startPath);
-console.log(`${dirCount} directories, ${fileCount} files`);
+const getAllFiles = async function (dirPath, arrayOfFiles) {
+  const currentDeep = calcCurrentDeepByPath(dirPath);
+  const level = calcLevel(currentDeep, startDeep);
+  const files = await getFilesInDirectory(dirPath);
 
-if (errors.length) {
-  console.log('Errors:');
-  errors.forEach(e => console.log(e.message));
+  let idx = 0;
+  arrayOfFiles = arrayOfFiles ?? [];
+
+  for await (const file of files) {
+    let indent = getIndent(level);
+    const fileInfo = await getFileInfo(dirPath, file);
+
+    if (fileInfo) {
+      if (fileInfo.isDirectory()) {
+        dirCount++;
+        printRow(idx, level, files.length, file, indent);
+
+        if (currentDeep < maxDeep) {
+          arrayOfFiles = await getAllFiles(dirPath + "/" + file, arrayOfFiles);
+        }
+
+      } else {
+        fileCount++;
+        printRow(idx, level, files.length, file, indent);
+        arrayOfFiles.push(path.join(dirPath, "/", file));
+      }
+    }
+    idx++;
+  }
+
+  return arrayOfFiles;
+};
+
+const checkStartDir = (startPath) => {
+  if (!path.isAbsolute(startPath)) {
+    console.log('Bad path!');
+    process.exit(1);
+  }
+};
+
+const tree = async (startPath = process.argv[2], key = process.argv[3], value = process.argv[4]) => {
+  checkStartDir(startPath);
+
+  inputDeep = setInputDeep(key,value);
+  startDeep = calcCurrentDeepByPath(startPath);
+  maxDeep = inputDeep + startDeep;
+
+  console.log(startPath);
+  await getAllFiles(startPath);
+  console.log(`${chalk.blue(dirCount)} directories, ${chalk.red(fileCount)} files`);
+
+  printErrors(errors);
+};
+
+module.exports = {
+  tree,
+  getAllFiles,
+  calcCurrentDeepByPath,
+  printRow,
+  setInputDeep,
+  checkStartDir,
+  getIndent,
+  calcLevel,
+  getFilesInDirectory,
+  getFileInfo,
+  printErrors
 }
